@@ -15,7 +15,7 @@ fn main() -> Result<(), rustyline::error::ReadlineError> {
                     eprintln!();
                 }
 
-                let (statements, errors) = ast::Parser::new(&tokens).parse();
+                let (statements, errors) = syntax::Parser::new(&tokens).parse();
                 if !errors.is_empty() {
                     eprintln!("Parsing errors:");
                     for error in errors {
