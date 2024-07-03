@@ -2,96 +2,6 @@ use std::{fmt::Display, iter::Peekable, str::CharIndices};
 
 use crate::LoxNumber;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Token<'a> {
-    // One character
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
-    Comma,
-    Dot,
-    Minus,
-    Plus,
-    Semicolon,
-    Slash,
-    Star,
-    Bang,
-    Equal,
-    Greater,
-    Less,
-    // Two characters
-    BangEqual,
-    EqualEqual,
-    GreaterEqual,
-    LessEqual,
-    PlusEqual,
-    MinusEqual,
-    SlashEqual,
-    StarEqual,
-    // Literals
-    Identifier(&'a str),
-    String(&'a str),
-    Number(LoxNumber),
-    // Keywords
-    And,
-    Class,
-    Else,
-    False,
-    Fun,
-    For,
-    If,
-    Nil,
-    Or,
-    Print,
-    Return,
-    Super,
-    This,
-    True,
-    Var,
-    While,
-    Break,
-    Continue,
-    EndOfFile,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct TokenInfo<'a> {
-    #[allow(dead_code)]
-    pub token: Token<'a>,
-    #[allow(dead_code)]
-    pub lexeme: &'a str,
-    #[allow(dead_code)]
-    pub line: u32,
-}
-
-impl<'a> Display for TokenInfo<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let lexeme = if let Token::EndOfFile = self.token {
-            "EOF"
-        } else {
-            self.lexeme
-        };
-
-        write!(f, "\"{}\" @ line {}", lexeme, self.line)
-    }
-}
-
-#[derive(Debug, Clone, Copy, thiserror::Error)]
-pub enum LexError<'a> {
-    #[error("Unterminated string literal \"{0}\".")]
-    UnterminatedStringLiteral(&'a str),
-
-    #[error("Unterminated floating point literal \"{0}\".")]
-    UnterminatedFloatingLiteral(&'a str),
-
-    #[error("Number literal \"{0}\" failed to parse.")]
-    FailureParsingNumber(&'a str),
-
-    #[error("Unexpected character \"{0}\".")]
-    UnexpectedCharacter(char),
-}
-
 #[derive(Debug, Clone)]
 pub struct Lexer<'a> {
     source_data: &'a str,
@@ -108,7 +18,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn lex(mut self) -> (Vec<TokenInfo<'a>>, Vec<LexError<'a>>) {
+    pub fn lex(mut self) -> (Vec<ContextualizedToken<'a>>, Vec<LexError<'a>>) {
         let mut tokens = Vec::new();
         let mut errors = Vec::new();
 
@@ -125,7 +35,7 @@ impl<'a> Lexer<'a> {
                         &self.source_data[start..]
                     };
 
-                    tokens.push(TokenInfo {
+                    tokens.push(ContextualizedToken {
                         token,
                         lexeme,
                         line,
@@ -138,7 +48,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        tokens.push(TokenInfo {
+        tokens.push(ContextualizedToken {
             token: Token::EndOfFile,
             lexeme: "",
             line: self.line,
@@ -339,4 +249,91 @@ impl<'a> Lexer<'a> {
     fn is_valid_for_identifier(c: &char) -> bool {
         c.is_ascii_alphanumeric() || *c == '_'
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Token<'a> {
+    // One character
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    Comma,
+    Dot,
+    Minus,
+    Plus,
+    Semicolon,
+    Slash,
+    Star,
+    Bang,
+    Equal,
+    Greater,
+    Less,
+    // Two characters
+    BangEqual,
+    EqualEqual,
+    GreaterEqual,
+    LessEqual,
+    PlusEqual,
+    MinusEqual,
+    SlashEqual,
+    StarEqual,
+    // Literals
+    Identifier(&'a str),
+    String(&'a str),
+    Number(LoxNumber),
+    // Keywords
+    And,
+    Class,
+    Else,
+    False,
+    Fun,
+    For,
+    If,
+    Nil,
+    Or,
+    Print,
+    Return,
+    Super,
+    This,
+    True,
+    Var,
+    While,
+    Break,
+    Continue,
+    EndOfFile,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ContextualizedToken<'a> {
+    pub token: Token<'a>,
+    pub lexeme: &'a str,
+    pub line: u32,
+}
+
+impl<'a> Display for ContextualizedToken<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lexeme = if let Token::EndOfFile = self.token {
+            "EOF"
+        } else {
+            self.lexeme
+        };
+
+        write!(f, "\"{}\" @ line {}", lexeme, self.line)
+    }
+}
+
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+pub enum LexError<'a> {
+    #[error("Unterminated string literal \"{0}\".")]
+    UnterminatedStringLiteral(&'a str),
+
+    #[error("Unterminated floating point literal \"{0}\".")]
+    UnterminatedFloatingLiteral(&'a str),
+
+    #[error("Number literal \"{0}\" failed to parse.")]
+    FailureParsingNumber(&'a str),
+
+    #[error("Unexpected character \"{0}\".")]
+    UnexpectedCharacter(char),
 }
