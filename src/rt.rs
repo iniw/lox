@@ -274,12 +274,12 @@ impl<'a> TreeWalker<'a> {
                 let right = self.evaluate_expression(right)?;
                 match op {
                     // Relational
-                    BinaryOp::Equal => left.eq(right),
-                    BinaryOp::NotEqual => left.neq(right),
-                    BinaryOp::GreaterThan => left.gt(right),
-                    BinaryOp::GreaterThanEqual => left.gte(right),
-                    BinaryOp::LessThan => left.lt(right),
-                    BinaryOp::LessThanEqual => left.lte(right),
+                    BinaryOp::Equal => Ok(Value::Bool(left.eq(&right))),
+                    BinaryOp::NotEqual => Ok(Value::Bool(left.neq(&right))),
+                    BinaryOp::GreaterThan => left.gt(&right).map(|b| Value::Bool(b)),
+                    BinaryOp::GreaterThanEqual => left.gte(&right).map(|b| Value::Bool(b)),
+                    BinaryOp::LessThan => left.lt(&right).map(|b| Value::Bool(b)),
+                    BinaryOp::LessThanEqual => left.lte(&right).map(|b| Value::Bool(b)),
 
                     // Arithmetic
                     BinaryOp::Add => left.add(right),
@@ -479,188 +479,233 @@ pub enum Value<'a> {
 }
 
 impl<'a> Value<'a> {
-    fn eq(self, right: Value<'a>) -> Evaluation<'a> {
+    fn eq(&self, right: &Value<'a>) -> bool {
         use Value::*;
         match (self, right) {
-            (Number(a), Number(b)) => Ok(Bool(a == b)),
+            (Number(a), Number(b)) => a == b,
 
-            (String(a), String(b)) => Ok(Bool(a == b)),
+            (String(a), String(b)) => a == b,
 
-            (Bool(a), Bool(b)) => Ok(Bool(a == b)),
+            (Bool(a), Bool(b)) => a == b,
 
-            (Nil, Nil) => Ok(Bool(true)),
+            (Nil, Nil) => true,
 
-            _ => Ok(Bool(false)),
+            _ => false,
         }
     }
 
-    fn neq(self, right: Value<'a>) -> Evaluation<'a> {
+    fn neq(&self, right: &Value<'a>) -> bool {
         use Value::*;
         match (self, right) {
-            (Number(a), Number(b)) => Ok(Bool(a != b)),
+            (Number(a), Number(b)) => a != b,
 
-            (String(a), String(b)) => Ok(Bool(a != b)),
+            (String(a), String(b)) => a != b,
 
-            (Bool(a), Bool(b)) => Ok(Bool(a != b)),
+            (Bool(a), Bool(b)) => a != b,
 
-            (Nil, Nil) => Ok(Bool(false)),
+            (Nil, Nil) => false,
 
-            _ => Ok(Bool(true)),
+            _ => true,
         }
     }
 
-    fn gt(self, right: Value<'a>) -> Evaluation<'a> {
+    fn gt(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
         use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Bool(a > b)),
-            (Number(a), Bool(b)) => Ok(Bool(a > LoxNumber::from(b))),
+        let value = match (self, right) {
+            (Number(a), Number(b)) => a > b,
+            (Number(a), Bool(b)) => *a > LoxNumber::from(*b),
 
-            (String(a), String(b)) => Ok(Bool(a > b)),
+            (String(a), String(b)) => a > b,
 
-            (Bool(a), Bool(b)) => Ok(Bool(a > b)),
-            (Bool(a), Number(b)) => Ok(Bool(b < LoxNumber::from(a))),
+            (Bool(a), Bool(b)) => a > b,
+            (Bool(a), Number(b)) => *b < LoxNumber::from(*a),
 
-            (left, right) => Err(RuntimeError::InvalidOperands(
-                left,
-                right,
-                BinaryOp::GreaterThan,
-            )),
-        }
+            (left, right) => {
+                return Err(RuntimeError::InvalidOperands(
+                    left.clone(),
+                    right.clone(),
+                    BinaryOp::GreaterThan,
+                ))
+            }
+        };
+
+        Ok(value)
     }
 
-    fn gte(self, right: Value<'a>) -> Evaluation<'a> {
+    fn gte(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
         use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Bool(a >= b)),
-            (Number(a), Bool(b)) => Ok(Bool(a >= LoxNumber::from(b))),
+        let value = match (self, right) {
+            (Number(a), Number(b)) => a >= b,
+            (Number(a), Bool(b)) => *a >= LoxNumber::from(*b),
 
-            (String(a), String(b)) => Ok(Bool(a >= b)),
+            (String(a), String(b)) => a >= b,
 
-            (Bool(a), Bool(b)) => Ok(Bool(a >= b)),
-            (Bool(a), Number(b)) => Ok(Bool(b <= LoxNumber::from(a))),
+            (Bool(a), Bool(b)) => a >= b,
+            (Bool(a), Number(b)) => *b <= LoxNumber::from(*a),
 
-            (left, right) => Err(RuntimeError::InvalidOperands(
-                left,
-                right,
-                BinaryOp::GreaterThanEqual,
-            )),
-        }
+            (left, right) => {
+                return Err(RuntimeError::InvalidOperands(
+                    left.clone(),
+                    right.clone(),
+                    BinaryOp::GreaterThanEqual,
+                ))
+            }
+        };
+
+        Ok(value)
     }
 
-    fn lt(self, right: Value<'a>) -> Evaluation<'a> {
+    fn lt(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
         use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Bool(a < b)),
-            (Number(a), Bool(b)) => Ok(Bool(a < LoxNumber::from(b))),
+        let value = match (self, right) {
+            (Number(a), Number(b)) => a < b,
+            (Number(a), Bool(b)) => *a < LoxNumber::from(*b),
 
-            (String(a), String(b)) => Ok(Bool(a < b)),
+            (String(a), String(b)) => a < b,
 
-            (Bool(a), Bool(b)) => Ok(Bool(a < b)),
-            (Bool(a), Number(b)) => Ok(Bool(b < LoxNumber::from(a))),
+            (Bool(a), Bool(b)) => a < b,
+            (Bool(a), Number(b)) => *b < LoxNumber::from(*a),
 
-            (left, right) => Err(RuntimeError::InvalidOperands(
-                left,
-                right,
-                BinaryOp::LessThan,
-            )),
-        }
+            (left, right) => {
+                return Err(RuntimeError::InvalidOperands(
+                    left.clone(),
+                    right.clone(),
+                    BinaryOp::LessThan,
+                ))
+            }
+        };
+
+        Ok(value)
     }
 
-    fn lte(self, right: Value<'a>) -> Evaluation<'a> {
+    fn lte(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
         use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Bool(a <= b)),
-            (Number(a), Bool(b)) => Ok(Bool(a <= LoxNumber::from(b))),
+        let value = match (self, right) {
+            (Number(a), Number(b)) => a <= b,
+            (Number(a), Bool(b)) => *a <= LoxNumber::from(*b),
 
-            (String(a), String(b)) => Ok(Bool(a <= b)),
+            (String(a), String(b)) => a <= b,
 
-            (Bool(a), Bool(b)) => Ok(Bool(a <= b)),
-            (Bool(a), Number(b)) => Ok(Bool(b <= LoxNumber::from(a))),
+            (Bool(a), Bool(b)) => a <= b,
+            (Bool(a), Number(b)) => *b <= LoxNumber::from(*a),
 
-            (left, right) => Err(RuntimeError::InvalidOperands(
-                left,
-                right,
-                BinaryOp::LessThanEqual,
-            )),
-        }
+            (left, right) => {
+                return Err(RuntimeError::InvalidOperands(
+                    left.clone(),
+                    right.clone(),
+                    BinaryOp::LessThanEqual,
+                ))
+            }
+        };
+
+        Ok(value)
     }
 
-    fn add(self, right: Value<'a>) -> Evaluation<'a> {
-        use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Number(a + b)),
-            (Number(a), Bool(b)) => Ok(Number(a + LoxNumber::from(b))),
-            (Bool(a), Number(b)) => Ok(Number(LoxNumber::from(a) + b)),
-            (Bool(a), Bool(b)) => Ok(Number(LoxNumber::from(a) + LoxNumber::from(b))),
-
-            (String(a), String(b)) => Ok(String(a + b)),
-            (String(a), Number(b)) => Ok(String(a + Cow::from(b.to_string()))),
-            (String(a), Bool(b)) => Ok(String(a + Cow::from(b.to_string()))),
-            (Number(a), String(b)) => Ok(String(Cow::from(a.to_string()) + b)),
-            (Bool(a), String(b)) => Ok(String(Cow::from(a.to_string()) + b)),
-
-            (a, b) => Err(RuntimeError::InvalidOperands(a, b, BinaryOp::Add)),
-        }
+    fn add(mut self, right: Value<'a>) -> Evaluation<'a> {
+        self.add_assign(right)?;
+        Ok(self)
     }
 
     fn add_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
-        *self = replace(self, Value::Undefined).add(right)?;
+        use Value::*;
+        match (&mut *self, right) {
+            (Number(a), Number(b)) => *a += b,
+            (Number(a), Bool(b)) => *a += LoxNumber::from(b),
+            (Bool(a), Number(b)) => *self = Number(LoxNumber::from(*a) + b),
+            (Bool(a), Bool(b)) => *self = Number(LoxNumber::from(*a) + LoxNumber::from(b)),
+
+            (String(a), String(b)) => *a += b,
+            (String(a), Number(b)) => *a += Cow::from(b.to_string()),
+            (String(a), Bool(b)) => *a += Cow::from(b.to_string()),
+            (Number(a), String(b)) => *self = String(Cow::from(a.to_string() + &b)),
+            (Bool(a), String(b)) => *self = String(Cow::from(a.to_string() + &b)),
+
+            (a, b) => {
+                return Err(RuntimeError::InvalidOperands(
+                    a.clone(),
+                    b.clone(),
+                    BinaryOp::Add,
+                ))
+            }
+        };
         Ok(())
     }
 
-    fn sub(self, right: Value<'a>) -> Evaluation<'a> {
-        use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Number(a - b)),
-            (Number(a), Bool(b)) => Ok(Number(a - LoxNumber::from(b))),
-
-            (Bool(a), Number(b)) => Ok(Number(LoxNumber::from(a) - b)),
-            (Bool(a), Bool(b)) => Ok(Number(LoxNumber::from(a) - LoxNumber::from(b))),
-
-            (a, b) => Err(RuntimeError::InvalidOperands(a, b, BinaryOp::Sub)),
-        }
+    fn sub(mut self, right: Value<'a>) -> Evaluation<'a> {
+        self.sub_assign(right)?;
+        Ok(self)
     }
 
     fn sub_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
-        *self = replace(self, Value::Undefined).sub(right)?;
+        use Value::*;
+        match (&mut *self, right) {
+            (Number(a), Number(b)) => *a -= b,
+            (Number(a), Bool(b)) => *a -= LoxNumber::from(b),
+
+            (Bool(a), Number(b)) => *self = Number(LoxNumber::from(*a) - b),
+            (Bool(a), Bool(b)) => *self = Number(LoxNumber::from(*a) - LoxNumber::from(b)),
+
+            (a, b) => {
+                return Err(RuntimeError::InvalidOperands(
+                    a.clone(),
+                    b.clone(),
+                    BinaryOp::Sub,
+                ))
+            }
+        };
         Ok(())
     }
 
-    fn mul(self, right: Value<'a>) -> Evaluation<'a> {
-        use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Number(a * b)),
-            (Number(a), Bool(b)) => Ok(Number(a * LoxNumber::from(b))),
-            (Bool(a), Number(b)) => Ok(Number(LoxNumber::from(a) * b)),
-            (Bool(a), Bool(b)) => Ok(Number(LoxNumber::from(a) * LoxNumber::from(b))),
-
-            (String(a), Number(b)) => Ok(String(Cow::from(a.repeat(b as usize)))),
-            (Number(a), String(b)) => Ok(String(Cow::from(b.repeat(a as usize)))),
-
-            (a, b) => Err(RuntimeError::InvalidOperands(a, b, BinaryOp::Mul)),
-        }
+    fn mul(mut self, right: Value<'a>) -> Evaluation<'a> {
+        self.mul_assign(right)?;
+        Ok(self)
     }
 
     fn mul_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
-        *self = replace(self, Value::Undefined).mul(right)?;
+        use Value::*;
+        match (&mut *self, right) {
+            (Number(a), Number(b)) => *a *= b,
+            (Number(a), Bool(b)) => *a *= LoxNumber::from(b),
+
+            (Bool(a), Number(b)) => *self = Number(LoxNumber::from(*a) * b),
+            (Bool(a), Bool(b)) => *self = Number(LoxNumber::from(*a) * LoxNumber::from(b)),
+
+            (String(a), Number(b)) => *self = String(Cow::from(a.repeat(b as usize))),
+            (Number(a), String(b)) => *self = String(Cow::from(b.repeat(*a as usize))),
+
+            (a, b) => {
+                return Err(RuntimeError::InvalidOperands(
+                    a.clone(),
+                    b.clone(),
+                    BinaryOp::Mul,
+                ))
+            }
+        };
         Ok(())
     }
 
-    fn div(self, right: Value<'a>) -> Evaluation<'a> {
-        use Value::*;
-        match (self, right) {
-            (Number(a), Number(b)) => Ok(Number(a / b)),
-            (Number(a), Bool(b)) => Ok(Number(a / LoxNumber::from(b))),
-
-            (Bool(a), Number(b)) => Ok(Number(LoxNumber::from(a) / b)),
-            (Bool(a), Bool(b)) => Ok(Number(LoxNumber::from(a) / LoxNumber::from(b))),
-
-            (a, b) => Err(RuntimeError::InvalidOperands(a, b, BinaryOp::Div)),
-        }
+    fn div(mut self, right: Value<'a>) -> Evaluation<'a> {
+        self.div_assign(right)?;
+        Ok(self)
     }
 
     fn div_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
-        *self = replace(self, Value::Undefined).div(right)?;
+        use Value::*;
+        match (&mut *self, right) {
+            (Number(a), Number(b)) => *a /= b,
+            (Number(a), Bool(b)) => *a /= LoxNumber::from(b),
+
+            (Bool(a), Number(b)) => *self = Number(LoxNumber::from(*a) / b),
+            (Bool(a), Bool(b)) => *self = Number(LoxNumber::from(*a) / LoxNumber::from(b)),
+
+            (a, b) => {
+                return Err(RuntimeError::InvalidOperands(
+                    a.clone(),
+                    b.clone(),
+                    BinaryOp::Div,
+                ))
+            }
+        };
         Ok(())
     }
 
