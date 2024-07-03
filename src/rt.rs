@@ -1,4 +1,11 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Display, mem::replace};
+use std::{
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
+    fmt::Display,
+    mem::replace,
+};
+
+use mucow::MuCow;
 
 use crate::{
     syntax::{AssignmentOp, BinaryOp, Block, Expr, Literal, Stmt, UnaryOp},
@@ -91,7 +98,7 @@ impl<'a> TreeWalker<'a> {
             superclass: None,
         };
 
-        self.env.declare_class(identifier, class);
+        self.env.declare_class(identifier, class)?;
 
         Ok(Stated::Nothing)
     }
@@ -123,7 +130,7 @@ impl<'a> TreeWalker<'a> {
             parent_env: self.env.snapshot(),
         };
 
-        self.env.declare_function(identifier, function);
+        self.env.declare_function(identifier, function)?;
 
         Ok(Stated::Nothing)
     }
@@ -172,9 +179,9 @@ impl<'a> TreeWalker<'a> {
             .map(|expr| self.evaluate_expression(expr))
             .transpose()?;
 
-        let value = value.unwrap_or(Value::Undefined);
+        let value = value.unwrap_or(Value::Nil);
 
-        self.env.declare_symbol(identifier, value);
+        self.env.declare_symbol(identifier, value)?;
 
         Ok(Stated::Nothing)
     }
@@ -315,7 +322,7 @@ impl<'a> TreeWalker<'a> {
 
             // Inject the arguments
             for (identifier, value) in callee.parameters.into_iter().zip(arguments.into_iter()) {
-                self.env.declare_symbol(identifier, value)
+                self.env.declare_symbol(identifier, value)?;
             }
 
             // NOTE: `perform_block` instead of `execute_block` to avoid pushing a useless scope
@@ -388,49 +395,34 @@ impl<'a> TreeWalker<'a> {
     ) -> Evaluation<'a> {
         let value = self.evaluate_expression(value)?;
 
-        fn implementation<'a>(
-            object: &mut Class<'a>,
-            property: &'a str,
-            op: AssignmentOp,
-            value: Value<'a>,
-        ) -> Evaluation<'a> {
-            match op {
-                AssignmentOp::Set => {
-                    object.scope.insert(property, value.clone());
-                    Ok(value)
-                }
-                op => {
-                    if let Some(var) = object.scope.get_mut(property) {
-                        match op {
-                            AssignmentOp::Add => var.add_assign(value)?,
-                            AssignmentOp::Sub => var.sub_assign(value)?,
-                            AssignmentOp::Mul => var.mul_assign(value)?,
-                            AssignmentOp::Div => var.div_assign(value)?,
-                            _ => unreachable!(),
-                        };
-                        Ok(var.clone())
-                    } else {
-                        Err(RuntimeError::UndefinedProperty(property))
-                    }
+        let mut object = self.get_property(expr)?;
+        match op {
+            AssignmentOp::Set => {
+                object.scope.insert(property, value.clone());
+                Ok(value)
+            }
+            op => {
+                if let Some(var) = object.scope.get_mut(property) {
+                    match op {
+                        AssignmentOp::Add => var.add_assign(value)?,
+                        AssignmentOp::Sub => var.sub_assign(value)?,
+                        AssignmentOp::Mul => var.mul_assign(value)?,
+                        AssignmentOp::Div => var.div_assign(value)?,
+                        _ => unreachable!(),
+                    };
+                    Ok(var.clone())
+                } else {
+                    Err(RuntimeError::UndefinedProperty(property))
                 }
             }
-        }
-
-        match self.get_property(expr)? {
-            MaybeOwned::Borrowed(object) => implementation(object, property, op, value),
-            MaybeOwned::Owned(mut object) => implementation(&mut object, property, op, value),
         }
     }
 
     fn evaluate_symbol(&mut self, identifier: &'a str) -> Evaluation<'a> {
-        if let Some(value) = self.env.find_symbol(identifier) {
-            match value {
-                Value::Undefined => Err(RuntimeError::UninitializedVariable(identifier)),
-                value => Ok(value.clone()),
-            }
-        } else {
-            Err(RuntimeError::UndefinedVariable(identifier))
-        }
+        self.env
+            .find_symbol(identifier)
+            .cloned()
+            .ok_or(RuntimeError::UndefinedVariable(identifier))
     }
 
     fn evaluate_unary(&mut self, op: UnaryOp, expr: Expr<'a>) -> Evaluation<'a> {
@@ -444,30 +436,30 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn get_property(&mut self, expr: Expr<'a>) -> Result<MaybeOwned<Class<'a>>, RuntimeError<'a>> {
+    fn get_property(&mut self, expr: Expr<'a>) -> Result<MuCow<Class<'a>>, RuntimeError<'a>> {
         match expr {
             Expr::Symbol { identifier } => match self.env.find_symbol(identifier) {
-                Some(Value::Instance(object)) => Ok(MaybeOwned::Borrowed(object)),
+                Some(Value::Instance(object)) => Ok(MuCow::Borrowed(object)),
                 Some(value) => Err(RuntimeError::InvalidObject(value.clone())),
                 None => Err(RuntimeError::UndefinedVariable(identifier)),
             },
             Expr::PropertyAccess { expr, property } => {
                 let class = self.get_property(*expr)?;
                 match class {
-                    MaybeOwned::Borrowed(class) => match class.scope.get_mut(property) {
-                        Some(Value::Instance(object)) => Ok(MaybeOwned::Borrowed(object)),
+                    MuCow::Borrowed(class) => match class.scope.get_mut(property) {
+                        Some(Value::Instance(object)) => Ok(MuCow::Borrowed(object)),
                         Some(value) => Err(RuntimeError::InvalidObject(value.clone())),
                         None => Err(RuntimeError::UndefinedProperty(property)),
                     },
-                    MaybeOwned::Owned(mut class) => match class.scope.remove(property) {
-                        Some(Value::Instance(object)) => Ok(MaybeOwned::Owned(object)),
+                    MuCow::Owned(mut class) => match class.scope.remove(property) {
+                        Some(Value::Instance(object)) => Ok(MuCow::Owned(object)),
                         Some(value) => Err(RuntimeError::InvalidObject(value)),
                         None => Err(RuntimeError::UndefinedProperty(property)),
                     },
                 }
             }
             expr => match self.evaluate_expression(expr)? {
-                Value::Instance(object) => Ok(MaybeOwned::Owned(object)),
+                Value::Instance(object) => Ok(MuCow::Owned(object)),
                 value => Err(RuntimeError::InvalidObject(value)),
             },
         }
@@ -729,6 +721,9 @@ struct Env<'a> {
     /// Whether this environment is a parent to another environment.
     /// This is an optimization to avoid walking the entire tree when deciding weather an environment has SCCs.
     is_parent: bool,
+
+    /// HACK
+    is_global: bool,
 }
 
 impl<'a> Env<'a> {
@@ -738,6 +733,7 @@ impl<'a> Env<'a> {
             scopes: vec![Scope::new()],
             parent: Some(parent),
             is_parent: false,
+            is_global: false,
         }
     }
 
@@ -785,6 +781,7 @@ impl<'a> EnvManager<'a> {
             scopes: vec![Scope::new()],
             parent: None,
             is_parent: false,
+            is_global: true,
         };
 
         Self {
@@ -797,16 +794,35 @@ impl<'a> EnvManager<'a> {
         self.find_symbol_in(self.active, identifier)
     }
 
-    fn declare_symbol(&mut self, identifier: &'a str, value: Value<'a>) {
-        self.active_env().declare_symbol(identifier, value);
+    fn declare_symbol(
+        &mut self,
+        identifier: &'a str,
+        value: Value<'a>,
+    ) -> Result<(), RuntimeError<'a>> {
+        match self.find_symbol(identifier) {
+            // TODO: Allow shadowing in the global scope
+            Some(_) => Err(RuntimeError::NameCollision(identifier)),
+            None => {
+                self.active_env().declare_symbol(identifier, value);
+                Ok(())
+            }
+        }
     }
 
-    fn declare_function(&mut self, identifier: &'a str, function: Function<'a>) {
-        self.declare_symbol(identifier, Value::Callable(function));
+    fn declare_function(
+        &mut self,
+        identifier: &'a str,
+        function: Function<'a>,
+    ) -> Result<(), RuntimeError<'a>> {
+        self.declare_symbol(identifier, Value::Callable(function))
     }
 
-    fn declare_class(&mut self, identifier: &'a str, class: Class<'a>) {
-        self.declare_symbol(identifier, Value::Class(class));
+    fn declare_class(
+        &mut self,
+        identifier: &'a str,
+        class: Class<'a>,
+    ) -> Result<(), RuntimeError<'a>> {
+        self.declare_symbol(identifier, Value::Class(class))
     }
 
     fn snapshot(&mut self) -> EnvHandle {
@@ -816,8 +832,13 @@ impl<'a> EnvManager<'a> {
 
     fn push(&mut self, parent: EnvHandle) -> EnvHandle {
         self.list.push(Env::with_parent(parent));
+
+        let handle = self.list.len() - 1;
+
         self.list[parent].is_parent = true;
-        self.list.len() - 1
+        self.list[handle].is_global = self.list[parent].is_global;
+
+        handle
     }
 
     fn pop(&mut self) {
@@ -880,8 +901,8 @@ pub enum RuntimeError<'a> {
     #[error("Undefined variable \"{0}\".")]
     UndefinedVariable(&'a str),
 
-    #[error("Variable \"{0}\" is unititialized and cannot be accessed.")]
-    UninitializedVariable(&'a str),
+    #[error("Symbol named \"{0}\" already exists in the current scope.")]
+    NameCollision(&'a str),
 
     #[error("Mismatched argument count, expected ({expected}) but got ({got})")]
     MismatchedArity { expected: usize, got: usize },
@@ -925,8 +946,3 @@ impl<'a> Display for Stated<'a> {
 
 type Execution<'a> = Result<Stated<'a>, RuntimeError<'a>>;
 type Evaluation<'a> = Result<Value<'a>, RuntimeError<'a>>;
-
-enum MaybeOwned<'a, T> {
-    Borrowed(&'a mut T),
-    Owned(T),
-}
