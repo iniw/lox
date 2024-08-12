@@ -560,17 +560,25 @@ impl<'a> Parser<'a> {
         };
 
         // Body
-        if let Stmt::Block { statements } = match chase!(self.tokens, Token::LeftBrace) {
+        let Stmt::Block { statements } = (match chase!(self.tokens, Token::LeftBrace) {
             Found(_) => self.parse_block()?,
-            NotFound(ctx) => return Err(ParseError::ExpectedBody(ctx)),
-        } {
-            Ok(Expr::Lambda {
-                parameters,
-                body: statements,
-            })
-        } else {
+            NotFound(ctx) => {
+                let expr = match self.parse_expression() {
+                    Ok(expr) => expr,
+                    Err(_) => return Err(ParseError::ExpectedBody(ctx)),
+                };
+                Stmt::Block {
+                    statements: vec![Stmt::Return { expr: Some(expr) }],
+                }
+            }
+        }) else {
             unreachable!();
-        }
+        };
+
+        Ok(Expr::Lambda {
+            parameters,
+            body: statements,
+        })
     }
 
     fn parse_arguments(&mut self) -> Result<Vec<Expr<'a>>, ParseError<'a>> {

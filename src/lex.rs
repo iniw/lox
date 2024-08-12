@@ -211,9 +211,8 @@ impl<'a> Lexer<'a> {
         self.source.next_if(|(_, c)| *c == expected).is_some()
     }
 
-    fn consume_until_delimiter(&mut self, delimiter: char) -> Option<(usize, char)> {
+    fn consume_until_delimiter(&mut self, delimiter: char) {
         while let Some(_) = self.source.next_if(|(_, c)| *c != delimiter) {}
-        self.source.peek().copied()
     }
 
     fn consume_while(&mut self, f: impl Fn(&char) -> bool) -> Option<(usize, char)> {
