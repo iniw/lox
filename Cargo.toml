@@ -10,3 +10,4 @@ thiserror = "1.0.61"
 # for the repl
 rustyline = "14.0.0"
 mucow = "0.1.0"
+fnv = "1.0.7"
