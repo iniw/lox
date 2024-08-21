@@ -108,8 +108,7 @@ impl<'a> TreeWalker<'a> {
     }
 
     fn execute_expression(&mut self, expr: Expr<'a>) -> Execution<'a> {
-        self.evaluate_expression(expr)
-            .map(|expr| Stated::Value(expr))
+        self.evaluate_expression(expr).map(Stated::Value)
     }
 
     fn execute_fun_decl(
@@ -272,10 +271,10 @@ impl<'a> TreeWalker<'a> {
                     // Relational
                     BinaryOp::Equal => Ok(Value::Bool(left.eq(&right))),
                     BinaryOp::NotEqual => Ok(Value::Bool(left.neq(&right))),
-                    BinaryOp::GreaterThan => left.gt(&right).map(|b| Value::Bool(b)),
-                    BinaryOp::GreaterThanEqual => left.gte(&right).map(|b| Value::Bool(b)),
-                    BinaryOp::LessThan => left.lt(&right).map(|b| Value::Bool(b)),
-                    BinaryOp::LessThanEqual => left.lte(&right).map(|b| Value::Bool(b)),
+                    BinaryOp::GreaterThan => left.gt(&right).map(Value::Bool),
+                    BinaryOp::GreaterThanEqual => left.gte(&right).map(Value::Bool),
+                    BinaryOp::LessThan => left.lt(&right).map(Value::Bool),
+                    BinaryOp::LessThanEqual => left.lte(&right).map(Value::Bool),
 
                     // Arithmetic
                     BinaryOp::Add => left.add(right),
@@ -458,6 +457,12 @@ impl<'a> TreeWalker<'a> {
                 value => Err(RuntimeError::InvalidObject(value)),
             },
         }
+    }
+}
+
+impl<'a> Default for TreeWalker<'a> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

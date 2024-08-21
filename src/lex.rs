@@ -54,7 +54,7 @@ impl<'a> Lexer<'a> {
             line: self.line,
         });
 
-        return (tokens, errors);
+        (tokens, errors)
     }
 
     fn process_char(&mut self, start: usize, c: char) -> Result<Option<Token<'a>>, LexError<'a>> {
@@ -212,11 +212,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn consume_until_delimiter(&mut self, delimiter: char) {
-        while let Some(_) = self.source.next_if(|(_, c)| *c != delimiter) {}
+        while self.source.next_if(|(_, c)| *c != delimiter).is_some() {}
     }
 
     fn consume_while(&mut self, f: impl Fn(&char) -> bool) -> Option<(usize, char)> {
-        while let Some(_) = self.source.next_if(|(_, c)| f(c)) {}
+        while self.source.next_if(|(_, c)| f(c)).is_some() {}
         self.source.peek().copied()
     }
 

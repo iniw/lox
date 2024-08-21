@@ -32,7 +32,7 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a [ContextualizedToken<'a>]) -> Self {
         Parser {
-            tokens: tokens.into_iter().peekable(),
+            tokens: tokens.iter().peekable(),
         }
     }
 
