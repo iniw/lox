@@ -23,16 +23,16 @@ macro_rules! chase {
 #[derive(Debug, Clone)]
 pub struct Parser<'lex> {
     tokens: Peekable<Iter<'lex, ContextualizedToken<'lex>>>,
-    // TODO: Move these into a later pass of the interpreter
-    // is_parsing_loop: bool,
-    // is_parsing_function: bool,
-    // loop_update_statement: Option<Expr<'lex>>,
+    is_parsing_loop: bool,
+    is_parsing_function: bool,
 }
 
 impl<'lex> Parser<'lex> {
     pub fn new(tokens: &'lex [ContextualizedToken<'lex>]) -> Self {
         Parser {
             tokens: tokens.iter().peekable(),
+            is_parsing_loop: false,
+            is_parsing_function: false,
         }
     }
 
@@ -81,13 +81,28 @@ impl<'lex> Parser<'lex> {
             Found(Token::Class) => self.parse_class_decl(),
             Found(Token::Continue) => self.parse_continue(),
             Found(Token::Semicolon) => self.parse_empty(),
-            Found(Token::Fun) => self.parse_fun_decl(),
+            Found(Token::Fun) => {
+                self.is_parsing_function = true;
+                let ret = self.parse_fun_decl();
+                self.is_parsing_function = false;
+                ret
+            }
             Found(Token::If) => self.parse_if(),
             Found(Token::Print) => self.parse_print(),
             Found(Token::Return) => self.parse_return(),
             Found(Token::Var) => self.parse_var_decl(),
-            Found(Token::While) => self.parse_while(),
-            Found(Token::For) => self.parse_for(),
+            Found(Token::While) => {
+                self.is_parsing_loop = true;
+                let ret = self.parse_while();
+                self.is_parsing_loop = false;
+                ret
+            }
+            Found(Token::For) => {
+                self.is_parsing_loop = true;
+                let ret = self.parse_for();
+                self.is_parsing_loop = false;
+                ret
+            }
             NotFound(_) => self.parse_expr(),
             _ => unreachable!(),
         }
@@ -103,8 +118,14 @@ impl<'lex> Parser<'lex> {
 
     fn parse_break(&mut self) -> ParseStmt<'lex> {
         match chase!(self.tokens, Token::Semicolon) {
-            Found(_) => Ok(Stmt::Break),
-            NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
+            Found(_) => {
+                if self.is_parsing_loop {
+                    Ok(Stmt::Break)
+                } else {
+                    Err(ParseError::StrayBreakStatement)
+                }
+            }
+            NotFound(ctx) => Err(ParseError::ExpectedSemicolon(ctx)),
         }
     }
 
@@ -150,8 +171,14 @@ impl<'lex> Parser<'lex> {
 
     fn parse_continue(&mut self) -> ParseStmt<'lex> {
         match chase!(self.tokens, Token::Semicolon) {
-            Found(_) => Ok(Stmt::Continue),
-            NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
+            Found(_) => {
+                if self.is_parsing_loop {
+                    Ok(Stmt::Continue)
+                } else {
+                    Err(ParseError::StrayContinueStatement)
+                }
+            }
+            NotFound(ctx) => Err(ParseError::ExpectedSemicolon(ctx)),
         }
     }
 
@@ -169,7 +196,7 @@ impl<'lex> Parser<'lex> {
                 // If a lambda was indeed found, treat it as a statement-expression
                 Ok(lambda) => match chase!(self.tokens, Token::Semicolon) {
                     Found(_) => return Ok(Stmt::Expr { expr: lambda }),
-                    NotFound(ctx) => return Err(ParseError::MissingSemicolon(ctx)),
+                    NotFound(ctx) => return Err(ParseError::ExpectedSemicolon(ctx)),
                 },
                 // Otherwise just return an error
                 Err(_) => return Err(ParseError::ExpectedIdentifier(ctx)),
@@ -200,13 +227,13 @@ impl<'lex> Parser<'lex> {
 
     fn parse_if(&mut self) -> ParseStmt<'lex> {
         if let NotFound(ctx) = chase!(self.tokens, Token::LeftParen) {
-            return Err(ParseError::MissingLeftParen(ctx));
+            return Err(ParseError::ExpectedParenLeft(ctx));
         };
 
         let condition = self.parse_expression()?;
 
         if let NotFound(ctx) = chase!(self.tokens, Token::RightParen) {
-            return Err(ParseError::UnmatchedParens(ctx));
+            return Err(ParseError::ExpectedParenRight(ctx));
         };
 
         let branch = self.parse_statement()?.wrapped_in_block();
@@ -234,7 +261,7 @@ impl<'lex> Parser<'lex> {
 
         match chase!(self.tokens, Token::Semicolon) {
             Found(_) => Ok(Stmt::Print { expr }),
-            NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
+            NotFound(ctx) => Err(ParseError::ExpectedSemicolon(ctx)),
         }
     }
 
@@ -245,9 +272,23 @@ impl<'lex> Parser<'lex> {
             None
         };
 
-        match chase!(self.tokens, Token::Semicolon) {
-            Found(_) => Ok(Stmt::Return { expr }),
-            NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
+        if let Some(expr) = expr {
+            match chase!(self.tokens, Token::Semicolon) {
+                Found(_) => {
+                    if self.is_parsing_function {
+                        return Ok(Stmt::Return { expr: Some(expr) });
+                    } else {
+                        return Err(ParseError::StrayReturnStatement);
+                    }
+                }
+                NotFound(ctx) => return Err(ParseError::ExpectedSemicolon(ctx)),
+            }
+        }
+
+        if self.is_parsing_function {
+            Ok(Stmt::Return { expr: None })
+        } else {
+            Err(ParseError::StrayReturnStatement)
         }
     }
 
@@ -266,19 +307,19 @@ impl<'lex> Parser<'lex> {
 
         match chase!(self.tokens, Token::Semicolon) {
             Found(_) => Ok(Stmt::VarDecl { identifier, expr }),
-            NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
+            NotFound(ctx) => Err(ParseError::ExpectedSemicolon(ctx)),
         }
     }
 
     fn parse_while(&mut self) -> ParseStmt<'lex> {
         if let NotFound(ctx) = chase!(self.tokens, Token::LeftParen) {
-            return Err(ParseError::MissingLeftParen(ctx));
+            return Err(ParseError::ExpectedParenLeft(ctx));
         };
 
         let condition = self.parse_expression()?;
 
         if let NotFound(ctx) = chase!(self.tokens, Token::RightParen) {
-            return Err(ParseError::UnmatchedParens(ctx));
+            return Err(ParseError::ExpectedParenRight(ctx));
         };
 
         let body = self.parse_statement()?;
@@ -291,7 +332,7 @@ impl<'lex> Parser<'lex> {
 
     fn parse_for(&mut self) -> ParseStmt<'lex> {
         if let NotFound(ctx) = chase!(self.tokens, Token::LeftParen) {
-            return Err(ParseError::MissingLeftParen(ctx));
+            return Err(ParseError::ExpectedParenLeft(ctx));
         };
 
         let initializer = match chase!(self.tokens, Token::Var | Token::Semicolon) {
@@ -311,7 +352,7 @@ impl<'lex> Parser<'lex> {
             NotFound(_) => {
                 let expr = self.parse_expression()?;
                 if let NotFound(ctx) = chase!(self.tokens, Token::RightParen) {
-                    return Err(ParseError::UnmatchedParens(ctx));
+                    return Err(ParseError::ExpectedParenRight(ctx));
                 };
                 Some(expr)
             }
@@ -351,7 +392,7 @@ impl<'lex> Parser<'lex> {
 
         match chase!(self.tokens, Token::Semicolon) {
             Found(_) => Ok(Stmt::Expr { expr }),
-            NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
+            NotFound(ctx) => Err(ParseError::ExpectedSemicolon(ctx)),
         }
     }
 
@@ -543,10 +584,15 @@ impl<'lex> Parser<'lex> {
                     Found(_) => Ok(Expr::Grouping {
                         expr: Box::new(expr),
                     }),
-                    NotFound(ctx) => Err(ParseError::UnmatchedParens(ctx)),
+                    NotFound(ctx) => Err(ParseError::ExpectedParenRight(ctx)),
                 }
             }
-            Found(Token::Fun) => self.parse_lambda(),
+            Found(Token::Fun) => {
+                self.is_parsing_function = true;
+                let ret = self.parse_lambda();
+                self.is_parsing_function = false;
+                ret
+            }
             NotFound(ctx) => return Err(ParseError::UnexpectedToken(ctx)),
             _ => unreachable!(),
         }
@@ -591,7 +637,7 @@ impl<'lex> Parser<'lex> {
             }
 
             if let NotFound(ctx) = chase!(self.tokens, Token::RightParen) {
-                return Err(ParseError::UnmatchedParens(ctx));
+                return Err(ParseError::ExpectedParenRight(ctx));
             }
         }
 
@@ -617,7 +663,7 @@ impl<'lex> Parser<'lex> {
             }
 
             if let NotFound(ctx) = chase!(self.tokens, Token::RightParen) {
-                return Err(ParseError::UnmatchedParens(ctx));
+                return Err(ParseError::ExpectedParenRight(ctx));
             }
         }
 
@@ -755,30 +801,6 @@ pub enum Expr<'lex> {
 
 #[derive(thiserror::Error, Debug)]
 pub enum ParseError<'lex> {
-    #[error("Expected closing parenthesis instead of {0}")]
-    UnmatchedParens(ContextualizedToken<'lex>),
-
-    #[error("Expected a semicolon instead of {0}.")]
-    MissingSemicolon(ContextualizedToken<'lex>),
-
-    #[error("Expected opening parenthesis after `if` instead of {0}.")]
-    MissingLeftParen(ContextualizedToken<'lex>),
-
-    #[error("Expected a symbol on the left-hand side of assignment instead of \"{0:?}\".")]
-    InvalidAssignment(Expr<'lex>),
-
-    #[error("Break statements are only valid inside of loops.")]
-    StrayBreakStatement,
-
-    #[error("Continue statements are only valid inside of loops.")]
-    StrayContinueStatement,
-
-    #[error("Return statements are only valid inside of functions.")]
-    StrayReturnStatement,
-
-    #[error("Expected identifier instead of {0}.")]
-    ExpectedIdentifier(ContextualizedToken<'lex>),
-
     #[error("Expected function body instead of {0}.")]
     ExpectedBody(ContextualizedToken<'lex>),
 
@@ -788,8 +810,32 @@ pub enum ParseError<'lex> {
     #[error("Expected identifier as parameter instead of {0}.")]
     ExpectedFunctionParameter(ContextualizedToken<'lex>),
 
+    #[error("Expected identifier instead of {0}.")]
+    ExpectedIdentifier(ContextualizedToken<'lex>),
+
     #[error("Expected method in function body instead of {0}.")]
     ExpectedMethod(ContextualizedToken<'lex>),
+
+    #[error("Expected opening parenthesis after `if` instead of {0}.")]
+    ExpectedParenLeft(ContextualizedToken<'lex>),
+
+    #[error("Expected closing parenthesis instead of {0}.")]
+    ExpectedParenRight(ContextualizedToken<'lex>),
+
+    #[error("Expected a semicolon instead of {0}.")]
+    ExpectedSemicolon(ContextualizedToken<'lex>),
+
+    #[error("Expected a symbol on the left-hand side of assignment instead of \"{0:?}\".")]
+    InvalidAssignment(Expr<'lex>),
+
+    #[error("Break statement is only valid inside of loops.")]
+    StrayBreakStatement,
+
+    #[error("Continue statement is only valid inside of loops.")]
+    StrayContinueStatement,
+
+    #[error("Return statement is only valid inside of functions.")]
+    StrayReturnStatement,
 
     #[error("Unexpected token {0}.")]
     UnexpectedToken(ContextualizedToken<'lex>),
