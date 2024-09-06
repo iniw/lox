@@ -3,14 +3,14 @@ use std::{fmt::Display, iter::Peekable, str::CharIndices};
 use crate::LoxNumber;
 
 #[derive(Debug, Clone)]
-pub struct Lexer<'a> {
-    source_data: &'a str,
-    source: Peekable<CharIndices<'a>>,
+pub struct Lexer<'src> {
+    source_data: &'src str,
+    source: Peekable<CharIndices<'src>>,
     line: u32,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl<'src> Lexer<'src> {
+    pub fn new(source: &'src str) -> Self {
         Lexer {
             source_data: source,
             source: source.char_indices().peekable(),
@@ -18,7 +18,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn lex(mut self) -> (Vec<ContextualizedToken<'a>>, Vec<LexError<'a>>) {
+    pub fn lex(mut self) -> (Vec<ContextualizedToken<'src>>, Vec<LexError<'src>>) {
         let mut tokens = Vec::new();
         let mut errors = Vec::new();
 
@@ -57,7 +57,11 @@ impl<'a> Lexer<'a> {
         (tokens, errors)
     }
 
-    fn process_char(&mut self, start: usize, c: char) -> Result<Option<Token<'a>>, LexError<'a>> {
+    fn process_char(
+        &mut self,
+        start: usize,
+        c: char,
+    ) -> Result<Option<Token<'src>>, LexError<'src>> {
         match c {
             // Single characters
             '(' => Ok(Some(Token::LeftParen)),
@@ -220,7 +224,7 @@ impl<'a> Lexer<'a> {
         self.source.peek().copied()
     }
 
-    fn as_keyword(&mut self, text: &str) -> Option<Token<'a>> {
+    fn as_keyword(&mut self, text: &str) -> Option<Token<'src>> {
         match text {
             "and" => Some(Token::And),
             "class" => Some(Token::Class),
@@ -250,7 +254,7 @@ impl<'a> Lexer<'a> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Token<'a> {
+pub enum Token<'src> {
     // One character
     LeftParen,
     RightParen,
@@ -277,8 +281,8 @@ pub enum Token<'a> {
     SlashEqual,
     StarEqual,
     // Literals
-    Identifier(&'a str),
-    String(&'a str),
+    Identifier(&'src str),
+    String(&'src str),
     Number(LoxNumber),
     // Keywords
     And,
@@ -303,13 +307,13 @@ pub enum Token<'a> {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct ContextualizedToken<'a> {
-    pub token: Token<'a>,
-    pub lexeme: &'a str,
+pub struct ContextualizedToken<'src> {
+    pub token: Token<'src>,
+    pub lexeme: &'src str,
     pub line: u32,
 }
 
-impl<'a> Display for ContextualizedToken<'a> {
+impl<'src> Display for ContextualizedToken<'src> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lexeme = if let Token::EndOfFile = self.token {
             "EOF"
@@ -322,15 +326,15 @@ impl<'a> Display for ContextualizedToken<'a> {
 }
 
 #[derive(Debug, Clone, Copy, thiserror::Error)]
-pub enum LexError<'a> {
+pub enum LexError<'src> {
     #[error("Unterminated string literal \"{0}\".")]
-    UnterminatedStringLiteral(&'a str),
+    UnterminatedStringLiteral(&'src str),
 
     #[error("Unterminated floating point literal \"{0}\".")]
-    UnterminatedFloatingLiteral(&'a str),
+    UnterminatedFloatingLiteral(&'src str),
 
     #[error("Number literal \"{0}\" failed to parse.")]
-    FailureParsingNumber(&'a str),
+    FailureParsingNumber(&'src str),
 
     #[error("Unexpected character \"{0}\".")]
     UnexpectedCharacter(char),
