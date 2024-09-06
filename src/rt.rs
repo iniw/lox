@@ -808,8 +808,8 @@ impl<'a> Env<'a> {
         self.scopes.pop();
     }
 
-    fn count_symbols(&self) -> usize {
-        self.scopes.iter().fold(0, |acc, s| acc + s.len())
+    fn is_empty(&self) -> bool {
+        self.scopes.iter().all(Scope::is_empty)
     }
 }
 
@@ -870,7 +870,7 @@ impl<'a> EnvManager<'a> {
 
     #[inline]
     fn snapshot(&mut self) -> EnvHandle {
-        if self.active_env().count_symbols() == 0 {
+        if self.active_env().is_empty() {
             return self.active;
         }
 
