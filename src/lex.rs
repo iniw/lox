@@ -231,8 +231,7 @@ impl<'a> Lexer<'a> {
             "if" => Some(Token::If),
             "nil" => Some(Token::Nil),
             "or" => Some(Token::Or),
-            // Easter egg
-            "print" | "pedrao" => Some(Token::Print),
+            "print" | "pedrao" => Some(Token::Print), // Easter egg
             "return" => Some(Token::Return),
             "super" => Some(Token::Super),
             "this" => Some(Token::This),
