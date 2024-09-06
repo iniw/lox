@@ -21,26 +21,26 @@ macro_rules! chase {
 }
 
 #[derive(Debug, Clone)]
-pub struct Parser<'a> {
-    tokens: Peekable<Iter<'a, ContextualizedToken<'a>>>,
+pub struct Parser<'lex> {
+    tokens: Peekable<Iter<'lex, ContextualizedToken<'lex>>>,
     // TODO: Move these into a later pass of the interpreter
     // is_parsing_loop: bool,
     // is_parsing_function: bool,
-    // loop_update_statement: Option<Expr<'a>>,
+    // loop_update_statement: Option<Expr<'lex>>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: &'a [ContextualizedToken<'a>]) -> Self {
+impl<'lex> Parser<'lex> {
+    pub fn new(tokens: &'lex [ContextualizedToken<'lex>]) -> Self {
         Parser {
             tokens: tokens.iter().peekable(),
         }
     }
 
-    pub fn parse(self) -> (Vec<Stmt<'a>>, Vec<ParseError<'a>>) {
+    pub fn parse(self) -> (Vec<Stmt<'lex>>, Vec<ParseError<'lex>>) {
         self.parse_program()
     }
 
-    fn parse_program(mut self) -> (Vec<Stmt<'a>>, Vec<ParseError<'a>>) {
+    fn parse_program(mut self) -> (Vec<Stmt<'lex>>, Vec<ParseError<'lex>>) {
         let mut statements = Vec::new();
         let mut errors = Vec::new();
 
@@ -59,7 +59,7 @@ impl<'a> Parser<'a> {
         (statements, errors)
     }
 
-    fn parse_statement(&mut self) -> ParseStmt<'a> {
+    fn parse_statement(&mut self) -> ParseStmt<'lex> {
         match chase!(
             self.tokens,
             /*      Token            Statement */
@@ -93,7 +93,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_block(&mut self) -> ParseStmt<'a> {
+    fn parse_block(&mut self) -> ParseStmt<'lex> {
         let mut statements = Vec::new();
         while let NotFound(_) = chase!(self.tokens, Token::RightBrace) {
             statements.push(self.parse_statement()?);
@@ -101,14 +101,14 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Block { statements })
     }
 
-    fn parse_break(&mut self) -> ParseStmt<'a> {
+    fn parse_break(&mut self) -> ParseStmt<'lex> {
         match chase!(self.tokens, Token::Semicolon) {
             Found(_) => Ok(Stmt::Break),
             NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
         }
     }
 
-    fn parse_class_decl(&mut self) -> ParseStmt<'a> {
+    fn parse_class_decl(&mut self) -> ParseStmt<'lex> {
         let identifier = match chase!(self.tokens, Token::Identifier(_)) {
             Found(Token::Identifier(str)) => str,
             NotFound(ctx) => return Err(ParseError::ExpectedIdentifier(ctx)),
@@ -148,19 +148,19 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_continue(&mut self) -> ParseStmt<'a> {
+    fn parse_continue(&mut self) -> ParseStmt<'lex> {
         match chase!(self.tokens, Token::Semicolon) {
             Found(_) => Ok(Stmt::Continue),
             NotFound(ctx) => Err(ParseError::MissingSemicolon(ctx)),
         }
     }
 
-    fn parse_empty(&mut self) -> ParseStmt<'a> {
+    fn parse_empty(&mut self) -> ParseStmt<'lex> {
         // No-op
         Ok(Stmt::Empty)
     }
 
-    fn parse_fun_decl(&mut self) -> ParseStmt<'a> {
+    fn parse_fun_decl(&mut self) -> ParseStmt<'lex> {
         // Identifier
         let identifier = match chase!(self.tokens, Token::Identifier(_)) {
             Found(Token::Identifier(str)) => str,
@@ -198,7 +198,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_if(&mut self) -> ParseStmt<'a> {
+    fn parse_if(&mut self) -> ParseStmt<'lex> {
         if let NotFound(ctx) = chase!(self.tokens, Token::LeftParen) {
             return Err(ParseError::MissingLeftParen(ctx));
         };
@@ -229,7 +229,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_print(&mut self) -> ParseStmt<'a> {
+    fn parse_print(&mut self) -> ParseStmt<'lex> {
         let expr = self.parse_expression()?;
 
         match chase!(self.tokens, Token::Semicolon) {
@@ -238,7 +238,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_return(&mut self) -> ParseStmt<'a> {
+    fn parse_return(&mut self) -> ParseStmt<'lex> {
         let expr = if let NotFound(_) = chase!(self.tokens, Token::Semicolon) {
             Some(self.parse_expression()?)
         } else {
@@ -251,7 +251,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_var_decl(&mut self) -> ParseStmt<'a> {
+    fn parse_var_decl(&mut self) -> ParseStmt<'lex> {
         let identifier = match chase!(self.tokens, Token::Identifier(_)) {
             Found(Token::Identifier(str)) => str,
             NotFound(ctx) => return Err(ParseError::ExpectedIdentifier(ctx)),
@@ -270,7 +270,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_while(&mut self) -> ParseStmt<'a> {
+    fn parse_while(&mut self) -> ParseStmt<'lex> {
         if let NotFound(ctx) = chase!(self.tokens, Token::LeftParen) {
             return Err(ParseError::MissingLeftParen(ctx));
         };
@@ -289,7 +289,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_for(&mut self) -> ParseStmt<'a> {
+    fn parse_for(&mut self) -> ParseStmt<'lex> {
         if let NotFound(ctx) = chase!(self.tokens, Token::LeftParen) {
             return Err(ParseError::MissingLeftParen(ctx));
         };
@@ -346,7 +346,7 @@ impl<'a> Parser<'a> {
         Ok(desugared)
     }
 
-    fn parse_expr(&mut self) -> ParseStmt<'a> {
+    fn parse_expr(&mut self) -> ParseStmt<'lex> {
         let expr = self.parse_expression()?;
 
         match chase!(self.tokens, Token::Semicolon) {
@@ -355,11 +355,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_expression(&mut self) -> ParseExpr<'a> {
+    fn parse_expression(&mut self) -> ParseExpr<'lex> {
         self.parse_assignment()
     }
 
-    fn parse_assignment(&mut self) -> ParseExpr<'a> {
+    fn parse_assignment(&mut self) -> ParseExpr<'lex> {
         let expr = self.parse_equality()?;
 
         match chase!(
@@ -393,7 +393,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_equality(&mut self) -> ParseExpr<'a> {
+    fn parse_equality(&mut self) -> ParseExpr<'lex> {
         let mut expr = self.parse_comparison()?;
 
         while let Found(token) = chase!(self.tokens, Token::BangEqual | Token::EqualEqual) {
@@ -409,7 +409,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_comparison(&mut self) -> ParseExpr<'a> {
+    fn parse_comparison(&mut self) -> ParseExpr<'lex> {
         let mut expr = self.parse_logical()?;
 
         while let Found(token) = chase!(
@@ -428,7 +428,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_logical(&mut self) -> ParseExpr<'a> {
+    fn parse_logical(&mut self) -> ParseExpr<'lex> {
         let mut expr = self.parse_term()?;
 
         while let Found(token) = chase!(self.tokens, Token::And | Token::Or) {
@@ -444,7 +444,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_term(&mut self) -> ParseExpr<'a> {
+    fn parse_term(&mut self) -> ParseExpr<'lex> {
         let mut expr = self.parse_factor()?;
 
         while let Found(token) = chase!(self.tokens, Token::Minus | Token::Plus) {
@@ -460,7 +460,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_factor(&mut self) -> ParseExpr<'a> {
+    fn parse_factor(&mut self) -> ParseExpr<'lex> {
         let mut expr = self.parse_unary()?;
 
         while let Found(token) = chase!(self.tokens, Token::Slash | Token::Star) {
@@ -476,7 +476,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_unary(&mut self) -> ParseExpr<'a> {
+    fn parse_unary(&mut self) -> ParseExpr<'lex> {
         if let Found(token) = chase!(self.tokens, Token::Bang | Token::Minus) {
             let op = UnaryOp::from(token);
             let right = self.parse_unary()?;
@@ -489,7 +489,7 @@ impl<'a> Parser<'a> {
         self.parse_call()
     }
 
-    fn parse_call(&mut self) -> ParseExpr<'a> {
+    fn parse_call(&mut self) -> ParseExpr<'lex> {
         let mut expr = self.parse_primary()?;
 
         while let Found(token) = chase!(self.tokens, Token::LeftParen | Token::Dot) {
@@ -519,7 +519,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn parse_primary(&mut self) -> ParseExpr<'a> {
+    fn parse_primary(&mut self) -> ParseExpr<'lex> {
         match chase!(
             self.tokens,
             Token::Number(_)
@@ -552,7 +552,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_lambda(&mut self) -> ParseExpr<'a> {
+    fn parse_lambda(&mut self) -> ParseExpr<'lex> {
         // Parameters (optional)
         let parameters = match chase!(self.tokens, Token::LeftParen) {
             Found(_) => self.parse_parameters()?,
@@ -581,7 +581,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_arguments(&mut self) -> Result<Vec<Expr<'a>>, ParseError<'a>> {
+    fn parse_arguments(&mut self) -> Result<Vec<Expr<'lex>>, ParseError<'lex>> {
         let mut arguments = vec![];
 
         if let NotFound(_) = chase!(self.tokens, Token::RightParen) {
@@ -598,7 +598,7 @@ impl<'a> Parser<'a> {
         Ok(arguments)
     }
 
-    fn parse_parameters(&mut self) -> Result<Vec<&'a str>, ParseError<'a>> {
+    fn parse_parameters(&mut self) -> Result<Vec<&'lex str>, ParseError<'lex>> {
         let mut parameters = vec![];
 
         if let NotFound(_) = chase!(self.tokens, Token::RightParen) {
@@ -655,48 +655,48 @@ impl<'a> Parser<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt<'a> {
+pub enum Stmt<'lex> {
     Block {
-        statements: Block<'a>,
+        statements: Block<'lex>,
     },
     Break,
     ClassDecl {
-        identifier: &'a str,
-        methods: Vec<(&'a str, Vec<&'a str>, Block<'a>)>,
-        superclass: Option<&'a str>,
+        identifier: &'lex str,
+        methods: Vec<(&'lex str, Vec<&'lex str>, Block<'lex>)>,
+        superclass: Option<&'lex str>,
     },
     Continue,
     Empty,
     Expr {
-        expr: Expr<'a>,
+        expr: Expr<'lex>,
     },
     FunDecl {
-        identifier: &'a str,
-        parameters: Vec<&'a str>,
-        body: Block<'a>,
+        identifier: &'lex str,
+        parameters: Vec<&'lex str>,
+        body: Block<'lex>,
     },
     If {
-        condition: Expr<'a>,
-        branch: Box<Stmt<'a>>,
-        else_branch: Option<Box<Stmt<'a>>>,
+        condition: Expr<'lex>,
+        branch: Box<Stmt<'lex>>,
+        else_branch: Option<Box<Stmt<'lex>>>,
     },
     Print {
-        expr: Expr<'a>,
+        expr: Expr<'lex>,
     },
     Return {
-        expr: Option<Expr<'a>>,
+        expr: Option<Expr<'lex>>,
     },
     VarDecl {
-        identifier: &'a str,
-        expr: Option<Expr<'a>>,
+        identifier: &'lex str,
+        expr: Option<Expr<'lex>>,
     },
     While {
-        condition: Expr<'a>,
-        body: Box<Stmt<'a>>,
+        condition: Expr<'lex>,
+        body: Box<Stmt<'lex>>,
     },
 }
 
-impl<'a> Stmt<'a> {
+impl<'lex> Stmt<'lex> {
     /// Wraps the statement in a block if it isn't already a block.
     fn wrapped_in_block(self) -> Self {
         match self {
@@ -708,64 +708,64 @@ impl<'a> Stmt<'a> {
     }
 }
 
-pub type Block<'a> = Vec<Stmt<'a>>;
+pub type Block<'lex> = Vec<Stmt<'lex>>;
 
 #[derive(Debug, Clone)]
-pub enum Expr<'a> {
+pub enum Expr<'lex> {
     Assignment {
         op: AssignmentOp,
-        identifier: &'a str,
-        expr: Box<Expr<'a>>,
+        identifier: &'lex str,
+        expr: Box<Expr<'lex>>,
     },
     Binary {
-        left: Box<Expr<'a>>,
+        left: Box<Expr<'lex>>,
         op: BinaryOp,
-        right: Box<Expr<'a>>,
+        right: Box<Expr<'lex>>,
     },
     FunctionCall {
-        expr: Box<Expr<'a>>,
-        arguments: Vec<Expr<'a>>,
+        expr: Box<Expr<'lex>>,
+        arguments: Vec<Expr<'lex>>,
     },
     Grouping {
-        expr: Box<Expr<'a>>,
+        expr: Box<Expr<'lex>>,
     },
     Lambda {
-        parameters: Vec<&'a str>,
-        body: Block<'a>,
+        parameters: Vec<&'lex str>,
+        body: Block<'lex>,
     },
-    Literal(Literal<'a>),
+    Literal(Literal<'lex>),
     PropertyAccess {
-        expr: Box<Expr<'a>>,
-        property: &'a str,
+        expr: Box<Expr<'lex>>,
+        property: &'lex str,
     },
     PropertyAssignment {
-        object: Box<Expr<'a>>,
-        property: &'a str,
+        object: Box<Expr<'lex>>,
+        property: &'lex str,
         op: AssignmentOp,
-        value: Box<Expr<'a>>,
+        value: Box<Expr<'lex>>,
     },
     Symbol {
-        identifier: &'a str,
+        identifier: &'lex str,
     },
     Unary {
         op: UnaryOp,
-        expr: Box<Expr<'a>>,
+        expr: Box<Expr<'lex>>,
     },
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum ParseError<'a> {
+pub enum ParseError<'lex> {
     #[error("Expected closing parenthesis instead of {0}")]
-    UnmatchedParens(ContextualizedToken<'a>),
+    UnmatchedParens(ContextualizedToken<'lex>),
 
     #[error("Expected a semicolon instead of {0}.")]
-    MissingSemicolon(ContextualizedToken<'a>),
+    MissingSemicolon(ContextualizedToken<'lex>),
 
     #[error("Expected opening parenthesis after `if` instead of {0}.")]
-    MissingLeftParen(ContextualizedToken<'a>),
+    MissingLeftParen(ContextualizedToken<'lex>),
 
     #[error("Expected a symbol on the left-hand side of assignment instead of \"{0:?}\".")]
-    InvalidAssignment(Expr<'a>),
+    InvalidAssignment(Expr<'lex>),
 
     #[error("Break statements are only valid inside of loops.")]
     StrayBreakStatement,
@@ -777,37 +777,37 @@ pub enum ParseError<'a> {
     StrayReturnStatement,
 
     #[error("Expected identifier instead of {0}.")]
-    ExpectedIdentifier(ContextualizedToken<'a>),
+    ExpectedIdentifier(ContextualizedToken<'lex>),
 
     #[error("Expected function body instead of {0}.")]
-    ExpectedBody(ContextualizedToken<'a>),
+    ExpectedBody(ContextualizedToken<'lex>),
 
     #[error("Expected function parameter list instead of {0}.")]
-    ExpectedFunctionParameterList(ContextualizedToken<'a>),
+    ExpectedFunctionParameterList(ContextualizedToken<'lex>),
 
     #[error("Expected identifier as parameter instead of {0}.")]
-    ExpectedFunctionParameter(ContextualizedToken<'a>),
+    ExpectedFunctionParameter(ContextualizedToken<'lex>),
 
     #[error("Expected method in function body instead of {0}.")]
-    ExpectedMethod(ContextualizedToken<'a>),
+    ExpectedMethod(ContextualizedToken<'lex>),
 
     #[error("Unexpected token {0}.")]
-    UnexpectedToken(ContextualizedToken<'a>),
+    UnexpectedToken(ContextualizedToken<'lex>),
 }
 
 /// The type returned by the `chase!` macro.
-enum Chased<'a> {
-    Found(Token<'a>),
-    NotFound(ContextualizedToken<'a>),
+enum Chased<'lex> {
+    Found(Token<'lex>),
+    NotFound(ContextualizedToken<'lex>),
 }
 
 use Chased::*;
 
 /// A literal value in the Lox language.
 #[derive(Debug, Copy, Clone)]
-pub enum Literal<'a> {
+pub enum Literal<'lex> {
     Number(LoxNumber),
-    String(&'a str),
+    String(&'lex str),
     True,
     False,
     Nil,
@@ -820,10 +820,10 @@ pub enum UnaryOp {
     LogicalNot,
 }
 
-impl<'a> From<Token<'a>> for UnaryOp {
+impl<'lex> From<Token<'lex>> for UnaryOp {
     /// Constructs a `UnaryOp` from it's equivalent `Token` counterpart.
     /// Panics if the token is not a valid unary operator.
-    fn from(token: Token<'a>) -> Self {
+    fn from(token: Token<'lex>) -> Self {
         match token {
             Token::Minus => UnaryOp::Minus,
             Token::Bang => UnaryOp::LogicalNot,
@@ -854,10 +854,10 @@ pub enum BinaryOp {
     Sub,
 }
 
-impl<'a> From<Token<'a>> for BinaryOp {
+impl<'lex> From<Token<'lex>> for BinaryOp {
     /// Constructs a `BinaryOp` from it's equivalent `Token` counterpart.
     /// Panics if the token is not a valid binary operator.
-    fn from(token: Token<'a>) -> Self {
+    fn from(token: Token<'lex>) -> Self {
         match token {
             Token::BangEqual => BinaryOp::NotEqual,
             Token::EqualEqual => BinaryOp::Equal,
@@ -885,10 +885,10 @@ pub enum AssignmentOp {
     Div,
 }
 
-impl<'a> From<Token<'a>> for AssignmentOp {
+impl<'lex> From<Token<'lex>> for AssignmentOp {
     /// Constructs a `AssignmentOp` from it's equivalent `Token` counterpart.
     /// Panics if the token is not a valid assignment or compound assignment operator.
-    fn from(token: Token<'a>) -> Self {
+    fn from(token: Token<'lex>) -> Self {
         match token {
             Token::Equal => AssignmentOp::Set,
             Token::PlusEqual => AssignmentOp::Add,
@@ -900,5 +900,5 @@ impl<'a> From<Token<'a>> for AssignmentOp {
     }
 }
 
-type ParseStmt<'a> = Result<Stmt<'a>, ParseError<'a>>;
-type ParseExpr<'a> = Result<Expr<'a>, ParseError<'a>>;
+type ParseStmt<'lex> = Result<Stmt<'lex>, ParseError<'lex>>;
+type ParseExpr<'lex> = Result<Expr<'lex>, ParseError<'lex>>;

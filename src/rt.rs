@@ -7,18 +7,18 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct TreeWalker<'a> {
-    env: EnvManager<'a>,
+pub struct TreeWalker<'ast> {
+    env: EnvManager<'ast>,
 }
 
-impl<'a> TreeWalker<'a> {
+impl<'ast> TreeWalker<'ast> {
     pub fn new() -> Self {
         Self {
             env: EnvManager::new(),
         }
     }
 
-    pub fn execute(&mut self, statements: Vec<Stmt<'a>>) -> Execution<'a> {
+    pub fn execute(&mut self, statements: Vec<Stmt<'ast>>) -> Execution<'ast> {
         let mut last_statement = Stated::Nothing;
         for statement in statements {
             last_statement = self.execute_statement(statement)?;
@@ -27,7 +27,7 @@ impl<'a> TreeWalker<'a> {
         Ok(last_statement)
     }
 
-    fn execute_statement(&mut self, statement: Stmt<'a>) -> Execution<'a> {
+    fn execute_statement(&mut self, statement: Stmt<'ast>) -> Execution<'ast> {
         match statement {
             Stmt::Block { statements } => self.execute_block(statements),
             Stmt::Break => self.execute_break(),
@@ -56,23 +56,23 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn execute_block(&mut self, statements: Vec<Stmt<'a>>) -> Execution<'a> {
+    fn execute_block(&mut self, statements: Vec<Stmt<'ast>>) -> Execution<'ast> {
         self.env.push_scope();
         let result = self.perform_block(statements);
         self.env.pop_scope();
         result
     }
 
-    fn execute_break(&self) -> Execution<'a> {
+    fn execute_break(&self) -> Execution<'ast> {
         Ok(Stated::ControlFlow(ControlFlow::Break))
     }
 
     fn execute_class_decl(
         &mut self,
-        identifier: &'a str,
-        methods: Vec<(&'a str, Vec<&'a str>, Block<'a>)>,
-        _superclass: Option<&'a str>,
-    ) -> Execution<'a> {
+        identifier: &'ast str,
+        methods: Vec<(&'ast str, Vec<&'ast str>, Block<'ast>)>,
+        _superclass: Option<&'ast str>,
+    ) -> Execution<'ast> {
         let scope = {
             let mut scope = Scope::with_capacity_and_hasher(methods.len(), Default::default());
             for (identifier, parameters, body) in methods {
@@ -98,25 +98,25 @@ impl<'a> TreeWalker<'a> {
         Ok(Stated::Nothing)
     }
 
-    fn execute_continue(&self) -> Execution<'a> {
+    fn execute_continue(&self) -> Execution<'ast> {
         Ok(Stated::ControlFlow(ControlFlow::Continue))
     }
 
-    fn execute_empty(&self) -> Execution<'a> {
+    fn execute_empty(&self) -> Execution<'ast> {
         // No-op
         Ok(Stated::Nothing)
     }
 
-    fn execute_expression(&mut self, expr: Expr<'a>) -> Execution<'a> {
+    fn execute_expression(&mut self, expr: Expr<'ast>) -> Execution<'ast> {
         self.evaluate_expression(expr).map(Stated::Value)
     }
 
     fn execute_fun_decl(
         &mut self,
-        identifier: &'a str,
-        parameters: Vec<&'a str>,
-        body: Block<'a>,
-    ) -> Execution<'a> {
+        identifier: &'ast str,
+        parameters: Vec<&'ast str>,
+        body: Block<'ast>,
+    ) -> Execution<'ast> {
         let function = Function {
             identifier: Some(identifier),
             parameters,
@@ -132,10 +132,10 @@ impl<'a> TreeWalker<'a> {
 
     fn execute_if(
         &mut self,
-        condition: Expr<'a>,
-        branch: Stmt<'a>,
-        else_branch: Option<Stmt<'a>>,
-    ) -> Execution<'a> {
+        condition: Expr<'ast>,
+        branch: Stmt<'ast>,
+        else_branch: Option<Stmt<'ast>>,
+    ) -> Execution<'ast> {
         if self.evaluate_expression(condition)?.is_truthy() {
             self.execute_statement(branch)
         } else if let Some(else_branch) = else_branch {
@@ -145,7 +145,7 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn perform_block(&mut self, statements: Vec<Stmt<'a>>) -> Execution<'a> {
+    fn perform_block(&mut self, statements: Vec<Stmt<'ast>>) -> Execution<'ast> {
         for statement in statements {
             if let flow @ Stated::ControlFlow(_) = self.execute_statement(statement)? {
                 return Ok(flow);
@@ -154,12 +154,12 @@ impl<'a> TreeWalker<'a> {
         Ok(Stated::Nothing)
     }
 
-    fn execute_print(&mut self, expr: Expr<'a>) -> Execution<'a> {
+    fn execute_print(&mut self, expr: Expr<'ast>) -> Execution<'ast> {
         println!("{}", self.evaluate_expression(expr)?);
         Ok(Stated::Nothing)
     }
 
-    fn execute_return(&mut self, expr: Option<Expr<'a>>) -> Execution<'a> {
+    fn execute_return(&mut self, expr: Option<Expr<'ast>>) -> Execution<'ast> {
         let value = if let Some(expr) = expr {
             self.evaluate_expression(expr)?
         } else {
@@ -169,7 +169,11 @@ impl<'a> TreeWalker<'a> {
         Ok(Stated::ControlFlow(ControlFlow::Return(value)))
     }
 
-    fn execute_var_decl(&mut self, identifier: &'a str, expr: Option<Expr<'a>>) -> Execution<'a> {
+    fn execute_var_decl(
+        &mut self,
+        identifier: &'ast str,
+        expr: Option<Expr<'ast>>,
+    ) -> Execution<'ast> {
         let value = expr
             .map(|expr| self.evaluate_expression(expr))
             .transpose()?;
@@ -181,7 +185,7 @@ impl<'a> TreeWalker<'a> {
         Ok(Stated::Nothing)
     }
 
-    fn execute_while(&mut self, condition: Expr<'a>, body: Stmt<'a>) -> Execution<'a> {
+    fn execute_while(&mut self, condition: Expr<'ast>, body: Stmt<'ast>) -> Execution<'ast> {
         while self.evaluate_expression(condition.clone())?.is_truthy() {
             let result = self.execute_statement(body.clone())?;
             if let Stated::ControlFlow(control_flow) = result {
@@ -196,7 +200,7 @@ impl<'a> TreeWalker<'a> {
         Ok(Stated::Nothing)
     }
 
-    fn evaluate_expression(&mut self, expr: Expr<'a>) -> Evaluation<'a> {
+    fn evaluate_expression(&mut self, expr: Expr<'ast>) -> Evaluation<'ast> {
         match expr {
             Expr::Assignment {
                 op,
@@ -225,9 +229,9 @@ impl<'a> TreeWalker<'a> {
     fn evaluate_assignment(
         &mut self,
         op: AssignmentOp,
-        identifier: &'a str,
-        expr: Expr<'a>,
-    ) -> Evaluation<'a> {
+        identifier: &'ast str,
+        expr: Expr<'ast>,
+    ) -> Evaluation<'ast> {
         let value = self.evaluate_expression(expr)?;
         if let Some(var) = self.env.find_symbol(identifier) {
             match op {
@@ -243,7 +247,12 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn evaluate_binary(&mut self, left: Expr<'a>, op: BinaryOp, right: Expr<'a>) -> Evaluation<'a> {
+    fn evaluate_binary(
+        &mut self,
+        left: Expr<'ast>,
+        op: BinaryOp,
+        right: Expr<'ast>,
+    ) -> Evaluation<'ast> {
         match op {
             // Logical (handled separately to implement short-circuiting)
             BinaryOp::And => {
@@ -291,9 +300,9 @@ impl<'a> TreeWalker<'a> {
 
     fn evaluate_function_call(
         &mut self,
-        expr: Expr<'a>,
-        arguments: Vec<Expr<'a>>,
-    ) -> Evaluation<'a> {
+        expr: Expr<'ast>,
+        arguments: Vec<Expr<'ast>>,
+    ) -> Evaluation<'ast> {
         let value = self.evaluate_expression(expr)?;
         if let Value::Callable(callee) = value {
             if arguments.len() != callee.parameters.len() {
@@ -307,7 +316,7 @@ impl<'a> TreeWalker<'a> {
             let arguments = arguments
                 .into_iter()
                 .map(|expr| self.evaluate_expression(expr))
-                .collect::<Result<Vec<Value<'a>>, RuntimeError>>()?;
+                .collect::<Result<Vec<Value<'ast>>, RuntimeError>>()?;
 
             // Allocate a new environment for the call
             let new_env = self.env.push(callee.parent_env);
@@ -344,11 +353,15 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn evaluate_grouping(&mut self, expr: Expr<'a>) -> Evaluation<'a> {
+    fn evaluate_grouping(&mut self, expr: Expr<'ast>) -> Evaluation<'ast> {
         self.evaluate_expression(expr)
     }
 
-    fn evaluate_lambda(&mut self, parameters: Vec<&'a str>, body: Block<'a>) -> Evaluation<'a> {
+    fn evaluate_lambda(
+        &mut self,
+        parameters: Vec<&'ast str>,
+        body: Block<'ast>,
+    ) -> Evaluation<'ast> {
         Ok(Value::Callable(Function {
             identifier: None,
             parameters,
@@ -357,7 +370,7 @@ impl<'a> TreeWalker<'a> {
         }))
     }
 
-    fn evaluate_literal(&self, literal: Literal<'a>) -> Evaluation<'a> {
+    fn evaluate_literal(&self, literal: Literal<'ast>) -> Evaluation<'ast> {
         match literal {
             Literal::Nil => Ok(Value::Nil),
             Literal::False => Ok(Value::Bool(false)),
@@ -367,7 +380,11 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn evaluate_property_access(&mut self, expr: Expr<'a>, property: &'a str) -> Evaluation<'a> {
+    fn evaluate_property_access(
+        &mut self,
+        expr: Expr<'ast>,
+        property: &'ast str,
+    ) -> Evaluation<'ast> {
         let value = self.evaluate_expression(expr)?;
         if let Value::Instance(object) = value {
             object
@@ -382,11 +399,11 @@ impl<'a> TreeWalker<'a> {
 
     fn evaluate_property_assignment(
         &mut self,
-        expr: Expr<'a>,
-        property: &'a str,
+        expr: Expr<'ast>,
+        property: &'ast str,
         op: AssignmentOp,
-        value: Expr<'a>,
-    ) -> Evaluation<'a> {
+        value: Expr<'ast>,
+    ) -> Evaluation<'ast> {
         let value = self.evaluate_expression(value)?;
 
         let mut object = self.get_property(expr)?;
@@ -412,14 +429,14 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn evaluate_symbol(&mut self, identifier: &'a str) -> Evaluation<'a> {
+    fn evaluate_symbol(&mut self, identifier: &'ast str) -> Evaluation<'ast> {
         self.env
             .find_symbol(identifier)
             .cloned()
             .ok_or(RuntimeError::UndefinedVariable(identifier))
     }
 
-    fn evaluate_unary(&mut self, op: UnaryOp, expr: Expr<'a>) -> Evaluation<'a> {
+    fn evaluate_unary(&mut self, op: UnaryOp, expr: Expr<'ast>) -> Evaluation<'ast> {
         let expr = self.evaluate_expression(expr)?;
         match op {
             UnaryOp::Minus => match expr {
@@ -430,7 +447,7 @@ impl<'a> TreeWalker<'a> {
         }
     }
 
-    fn get_property(&mut self, expr: Expr<'a>) -> Result<MuCow<Class<'a>>, RuntimeError<'a>> {
+    fn get_property(&mut self, expr: Expr<'ast>) -> Result<MuCow<Class<'ast>>, RuntimeError<'ast>> {
         match expr {
             Expr::Symbol { identifier } => match self.env.find_symbol(identifier) {
                 Some(Value::Instance(object)) => Ok(MuCow::Borrowed(object)),
@@ -460,26 +477,26 @@ impl<'a> TreeWalker<'a> {
     }
 }
 
-impl<'a> Default for TreeWalker<'a> {
+impl<'ast> Default for TreeWalker<'ast> {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum Value<'a> {
+pub enum Value<'ast> {
     Number(LoxNumber),
     String(String),
     Bool(bool),
-    Callable(Function<'a>),
-    Class(Class<'a>),
-    Instance(Class<'a>),
+    Callable(Function<'ast>),
+    Class(Class<'ast>),
+    Instance(Class<'ast>),
     Nil,
     Undefined,
 }
 
-impl<'a> Value<'a> {
-    fn eq(&self, right: &Value<'a>) -> bool {
+impl<'ast> Value<'ast> {
+    fn eq(&self, right: &Value<'ast>) -> bool {
         use Value::*;
         match (self, right) {
             (Number(a), Number(b)) => a == b,
@@ -494,7 +511,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    fn neq(&self, right: &Value<'a>) -> bool {
+    fn neq(&self, right: &Value<'ast>) -> bool {
         use Value::*;
         match (self, right) {
             (Number(a), Number(b)) => a != b,
@@ -509,7 +526,7 @@ impl<'a> Value<'a> {
         }
     }
 
-    fn gt(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
+    fn gt(&self, right: &Value<'ast>) -> Result<bool, RuntimeError<'ast>> {
         use Value::*;
         let value = match (self, right) {
             (Number(a), Number(b)) => a > b,
@@ -532,7 +549,7 @@ impl<'a> Value<'a> {
         Ok(value)
     }
 
-    fn gte(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
+    fn gte(&self, right: &Value<'ast>) -> Result<bool, RuntimeError<'ast>> {
         use Value::*;
         let value = match (self, right) {
             (Number(a), Number(b)) => a >= b,
@@ -555,7 +572,7 @@ impl<'a> Value<'a> {
         Ok(value)
     }
 
-    fn lt(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
+    fn lt(&self, right: &Value<'ast>) -> Result<bool, RuntimeError<'ast>> {
         use Value::*;
         let value = match (self, right) {
             (Number(a), Number(b)) => a < b,
@@ -578,7 +595,7 @@ impl<'a> Value<'a> {
         Ok(value)
     }
 
-    fn lte(&self, right: &Value<'a>) -> Result<bool, RuntimeError<'a>> {
+    fn lte(&self, right: &Value<'ast>) -> Result<bool, RuntimeError<'ast>> {
         use Value::*;
         let value = match (self, right) {
             (Number(a), Number(b)) => a <= b,
@@ -601,12 +618,12 @@ impl<'a> Value<'a> {
         Ok(value)
     }
 
-    fn add(mut self, right: Value<'a>) -> Evaluation<'a> {
+    fn add(mut self, right: Value<'ast>) -> Evaluation<'ast> {
         self.add_assign(right)?;
         Ok(self)
     }
 
-    fn add_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
+    fn add_assign(&mut self, right: Value<'ast>) -> Result<(), RuntimeError<'ast>> {
         use Value::*;
         match (&mut *self, right) {
             (Number(a), Number(b)) => *a += b,
@@ -631,12 +648,12 @@ impl<'a> Value<'a> {
         Ok(())
     }
 
-    fn sub(mut self, right: Value<'a>) -> Evaluation<'a> {
+    fn sub(mut self, right: Value<'ast>) -> Evaluation<'ast> {
         self.sub_assign(right)?;
         Ok(self)
     }
 
-    fn sub_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
+    fn sub_assign(&mut self, right: Value<'ast>) -> Result<(), RuntimeError<'ast>> {
         use Value::*;
         match (&mut *self, right) {
             (Number(a), Number(b)) => *a -= b,
@@ -656,12 +673,12 @@ impl<'a> Value<'a> {
         Ok(())
     }
 
-    fn mul(mut self, right: Value<'a>) -> Evaluation<'a> {
+    fn mul(mut self, right: Value<'ast>) -> Evaluation<'ast> {
         self.mul_assign(right)?;
         Ok(self)
     }
 
-    fn mul_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
+    fn mul_assign(&mut self, right: Value<'ast>) -> Result<(), RuntimeError<'ast>> {
         use Value::*;
         match (&mut *self, right) {
             (Number(a), Number(b)) => *a *= b,
@@ -684,12 +701,12 @@ impl<'a> Value<'a> {
         Ok(())
     }
 
-    fn div(mut self, right: Value<'a>) -> Evaluation<'a> {
+    fn div(mut self, right: Value<'ast>) -> Evaluation<'ast> {
         self.div_assign(right)?;
         Ok(self)
     }
 
-    fn div_assign(&mut self, right: Value<'a>) -> Result<(), RuntimeError<'a>> {
+    fn div_assign(&mut self, right: Value<'ast>) -> Result<(), RuntimeError<'ast>> {
         use Value::*;
         match (&mut *self, right) {
             (Number(a), Number(b)) => *a /= b,
@@ -718,7 +735,7 @@ impl<'a> Value<'a> {
     }
 }
 
-impl<'a> Display for Value<'a> {
+impl<'ast> Display for Value<'ast> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Number(n) => write!(f, "{}", n),
@@ -734,36 +751,36 @@ impl<'a> Display for Value<'a> {
 }
 
 #[allow(dead_code)]
-enum ValueHandle<'a> {
-    Ref(&'a str, EnvHandle),
-    Own(Value<'a>),
+enum ValueHandle<'ast> {
+    Ref(&'ast str, EnvHandle),
+    Own(Value<'ast>),
 }
 
 #[derive(Debug, Clone)]
-pub struct Function<'a> {
-    identifier: Option<&'a str>,
-    parameters: Vec<&'a str>,
-    body: Block<'a>,
+pub struct Function<'ast> {
+    identifier: Option<&'ast str>,
+    parameters: Vec<&'ast str>,
+    body: Block<'ast>,
     parent_env: usize,
 }
 
 #[derive(Debug, Clone)]
-pub struct Class<'a> {
-    identifier: &'a str,
-    scope: Scope<'a>,
+pub struct Class<'ast> {
+    identifier: &'ast str,
+    scope: Scope<'ast>,
     #[allow(dead_code)]
-    superclass: Option<Box<Class<'a>>>,
+    superclass: Option<Box<Class<'ast>>>,
 }
 
 /// Maps identifiers to `Value`s
-type Scope<'a> = fnv::FnvHashMap<&'a str, Value<'a>>;
+type Scope<'ast> = fnv::FnvHashMap<&'ast str, Value<'ast>>;
 
 /// A Lox "environment", containing a list of scopes and a handle to the parent it "inherits" (closes) from.
 #[derive(Debug, Clone)]
-struct Env<'a> {
+struct Env<'ast> {
     /// The FILO stack of scopes that gets pushed/popped by blocks and functions.
     /// There is always at least one scope and the active scope is always the last one.
-    scopes: Vec<Scope<'a>>,
+    scopes: Vec<Scope<'ast>>,
 
     /// The parent environment, if any.
     /// Optional because the global environment has no parent.
@@ -777,7 +794,7 @@ struct Env<'a> {
     is_global: bool,
 }
 
-impl<'a> Env<'a> {
+impl<'ast> Env<'ast> {
     /// Creates a new environment with a single scope as a child of the given parent.
     fn with_parent(parent: usize) -> Self {
         Self {
@@ -788,14 +805,14 @@ impl<'a> Env<'a> {
         }
     }
 
-    fn find_symbol(&mut self, identifier: &'a str) -> Option<&mut Value<'a>> {
+    fn find_symbol(&mut self, identifier: &'ast str) -> Option<&mut Value<'ast>> {
         self.scopes
             .iter_mut()
             .rev()
             .find_map(|scope| scope.get_mut(identifier))
     }
 
-    fn current_scope(&mut self) -> &mut Scope<'a> {
+    fn current_scope(&mut self) -> &mut Scope<'ast> {
         // SAFETY: We always have at least one scope.
         unsafe { self.scopes.last_mut().unwrap_unchecked() }
     }
@@ -817,14 +834,14 @@ impl<'a> Env<'a> {
 /// This is a tree-like structure but is implemented as a flat list where parent nodes are an index into said list instead of a direct pointer/reference,
 /// which makes the borrow checker happy.
 #[derive(Debug, Clone)]
-struct EnvManager<'a> {
-    list: Vec<Env<'a>>,
+struct EnvManager<'ast> {
+    list: Vec<Env<'ast>>,
     active: EnvHandle,
 }
 
 type EnvHandle = usize;
 
-impl<'a> EnvManager<'a> {
+impl<'ast> EnvManager<'ast> {
     /// Creates a new environment manager with a single global environment.
     fn new() -> Self {
         let global = Env {
@@ -841,16 +858,16 @@ impl<'a> EnvManager<'a> {
     }
 
     #[inline]
-    fn find_symbol(&mut self, identifier: &'a str) -> Option<&mut Value<'a>> {
+    fn find_symbol(&mut self, identifier: &'ast str) -> Option<&mut Value<'ast>> {
         self.find_symbol_in(self.active, identifier)
     }
 
     #[inline]
     fn declare_symbol(
         &mut self,
-        identifier: &'a str,
-        value: Value<'a>,
-    ) -> Result<(), RuntimeError<'a>> {
+        identifier: &'ast str,
+        value: Value<'ast>,
+    ) -> Result<(), RuntimeError<'ast>> {
         let allow_overriding = self.active_env().is_global && self.active_env().scopes.len() == 1;
         match self.active_env().current_scope().entry(identifier) {
             Entry::Vacant(entry) => {
@@ -907,7 +924,11 @@ impl<'a> EnvManager<'a> {
     }
 
     /// Walks backwards from the given environment to it's parents until it finds the first instance of the given identifier.
-    fn find_symbol_in(&mut self, env: EnvHandle, identifier: &'a str) -> Option<&mut Value<'a>> {
+    fn find_symbol_in(
+        &mut self,
+        env: EnvHandle,
+        identifier: &'ast str,
+    ) -> Option<&mut Value<'ast>> {
         let mut env = self.get(env);
         loop {
             if let Some(value) = env.find_symbol(identifier) {
@@ -915,7 +936,9 @@ impl<'a> EnvManager<'a> {
                 // The output lifetime is bound to `self`, so this doesn't extend the lifetime.
                 // FIXME: remove once polonius (or another new borrow checker) sees that it's fine.
                 return unsafe {
-                    Some(std::mem::transmute::<&mut Value<'a>, &mut Value<'a>>(value))
+                    Some(std::mem::transmute::<&mut Value<'ast>, &mut Value<'ast>>(
+                        value,
+                    ))
                 };
             } else if let Some(parent) = env.parent {
                 env = self.get(parent);
@@ -926,51 +949,51 @@ impl<'a> EnvManager<'a> {
     }
 
     #[inline]
-    fn active_env(&mut self) -> &mut Env<'a> {
+    fn active_env(&mut self) -> &mut Env<'ast> {
         self.get(self.active)
     }
 
     #[inline]
-    fn get(&mut self, env: EnvHandle) -> &mut Env<'a> {
+    fn get(&mut self, env: EnvHandle) -> &mut Env<'ast> {
         &mut self.list[env]
     }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum RuntimeError<'a> {
+pub enum RuntimeError<'ast> {
     #[error("Invalid operand \"{0}\" for unary operator \"{1:?}\".")]
-    InvalidOperand(Value<'a>, UnaryOp),
+    InvalidOperand(Value<'ast>, UnaryOp),
 
     #[error("Invalid operands \"{0}\" and \"{1}\" for binary operator \"{2:?}\".")]
-    InvalidOperands(Value<'a>, Value<'a>, BinaryOp),
+    InvalidOperands(Value<'ast>, Value<'ast>, BinaryOp),
 
     #[error("Value \"{0}\" is not callable.")]
-    InvalidCallee(Value<'a>),
+    InvalidCallee(Value<'ast>),
 
     #[error("Value \"{0}\" is not a class object.")]
-    InvalidObject(Value<'a>),
+    InvalidObject(Value<'ast>),
 
     #[error("Undefined property \"{0}\".")]
-    UndefinedProperty(&'a str),
+    UndefinedProperty(&'ast str),
 
     #[error("Undefined variable \"{0}\".")]
-    UndefinedVariable(&'a str),
+    UndefinedVariable(&'ast str),
 
     #[error("Symbol named \"{0}\" already exists in the current scope.")]
-    NameCollision(&'a str),
+    NameCollision(&'ast str),
 
     #[error("Mismatched argument count, expected ({expected}) but got ({got})")]
     MismatchedArity { expected: usize, got: usize },
 }
 
 #[derive(Debug, Clone)]
-pub enum ControlFlow<'a> {
+pub enum ControlFlow<'ast> {
     Break,
     Continue,
-    Return(Value<'a>),
+    Return(Value<'ast>),
 }
 
-impl<'a> Display for ControlFlow<'a> {
+impl<'ast> Display for ControlFlow<'ast> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Break => write!(f, "break"),
@@ -982,14 +1005,14 @@ impl<'a> Display for ControlFlow<'a> {
 
 /// The result of executing a statement.
 #[derive(Debug, Clone)]
-pub enum Stated<'a> {
+pub enum Stated<'ast> {
     Nothing,
     #[allow(dead_code)]
-    Value(Value<'a>),
-    ControlFlow(ControlFlow<'a>),
+    Value(Value<'ast>),
+    ControlFlow(ControlFlow<'ast>),
 }
 
-impl<'a> Display for Stated<'a> {
+impl<'ast> Display for Stated<'ast> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Nothing => Ok(()),
@@ -999,5 +1022,5 @@ impl<'a> Display for Stated<'a> {
     }
 }
 
-type Execution<'a> = Result<Stated<'a>, RuntimeError<'a>>;
-type Evaluation<'a> = Result<Value<'a>, RuntimeError<'a>>;
+type Execution<'ast> = Result<Stated<'ast>, RuntimeError<'ast>>;
+type Evaluation<'ast> = Result<Value<'ast>, RuntimeError<'ast>>;
