@@ -1,5 +1,5 @@
 use core::slice::Iter;
-use std::{convert::From, iter::Peekable};
+use std::{convert::From, iter::Peekable, mem::replace};
 
 use crate::{
     lex::{ContextualizedToken, Token},
@@ -82,9 +82,10 @@ impl<'lex> Parser<'lex> {
             Found(Token::Continue) => self.parse_continue(),
             Found(Token::Semicolon) => self.parse_empty(),
             Found(Token::Fun) => {
+                let old = replace(&mut self.is_parsing_function, true);
                 self.is_parsing_function = true;
                 let ret = self.parse_fun_decl();
-                self.is_parsing_function = false;
+                self.is_parsing_function = old;
                 ret
             }
             Found(Token::If) => self.parse_if(),
@@ -92,15 +93,15 @@ impl<'lex> Parser<'lex> {
             Found(Token::Return) => self.parse_return(),
             Found(Token::Var) => self.parse_var_decl(),
             Found(Token::While) => {
-                self.is_parsing_loop = true;
+                let old = replace(&mut self.is_parsing_loop, true);
                 let ret = self.parse_while();
-                self.is_parsing_loop = false;
+                self.is_parsing_loop = old;
                 ret
             }
             Found(Token::For) => {
-                self.is_parsing_loop = true;
+                let old = replace(&mut self.is_parsing_loop, true);
                 let ret = self.parse_for();
-                self.is_parsing_loop = false;
+                self.is_parsing_loop = old;
                 ret
             }
             NotFound(_) => self.parse_expr(),
